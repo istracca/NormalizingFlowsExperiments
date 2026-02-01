@@ -13,7 +13,6 @@ class ConvResidualBlock(nn.Module):
     def __init__(self, channels, hidden_dim=64, dropout_p=0.0):
         super().__init__()
         self.net = nn.Sequential(
-            # Same structure as your ChannelCouplingLayer
             nn.Conv2d(channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
@@ -24,7 +23,6 @@ class ConvResidualBlock(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
             
-            # Output matches input channels (for residual add), not channels*2
             nn.Conv2d(hidden_dim, channels, kernel_size=3, padding=1)
         )
         # Zero-init last layer so block starts as identity

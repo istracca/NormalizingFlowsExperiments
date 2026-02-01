@@ -73,8 +73,6 @@ class SqueezeFlow(nn.Module):
         self.squeeze = Squeeze()
         self.layers = nn.ModuleList()
         
-        # We prefer even number of layers so we can swap the channel order
-        # to ensure all channels get processed.
         for i in range(num_layers):
             self.layers.append(ChannelCouplingLayer(in_channels=4, hidden_dim=hidden_dim, dropout_p=dropout_p))
 

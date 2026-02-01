@@ -14,7 +14,6 @@ from utils import set_seed
 # ==========================================
 # 1. CONFIGURATION GRID
 # ==========================================
-# Define the combinations you want to test here
 HYPERPARAMS = {
     "MODEL": ["disc_v3_double"],      
     "OPTIMIZER": ["Adam"],
@@ -38,7 +37,6 @@ X_train, y_train = data['X_train'], data['y_train']
 X_val, y_val = data['X_val'], data['y_val']
 X_test, y_test = data['X_test'], data['y_test']
 
-# Prepare Tensors
 def prepare_loader(X, y, batch_size, shuffle=False):
     X_tensor = torch.tensor(X.reshape(-1, 1, 28, 56), dtype=torch.float32)
     y_tensor = torch.tensor(y, dtype=torch.long)
@@ -90,7 +88,7 @@ def evaluate_model(model, loader, device, n_runs=10):
                 logits1, logits2 = model(batch_X)
             
                 
-                # --- Loss Calculation (User Logic) ---
+                # --- Loss Calculation ---
                 loss = criterion(logits1, batch_y[:, 0]) + criterion(logits2, batch_y[:, 1])
                 run_loss += loss.item()
                 

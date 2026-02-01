@@ -13,7 +13,6 @@ class ConvResidualBlock(nn.Module):
     def __init__(self, channels, hidden_dim=64, dropout_p=0.0):
         super().__init__()
         self.net = nn.Sequential(
-            # Same structure as your ChannelCouplingLayer
             nn.Conv2d(channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),

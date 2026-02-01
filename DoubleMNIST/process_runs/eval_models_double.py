@@ -13,10 +13,10 @@ sys.path.append(os.path.abspath(os.path.join('..', '..')))
 from utils import set_seed
 sys.path.append(os.path.join(os.path.dirname(__file__), '../priors'))
 from SimpleSplitGMM import SimpleSplitGMM
+
 # ==========================================
 # 1. CONFIGURATION GRID
 # ==========================================
-# Define the combinations you want to test here
 HYPERPARAMS = {
     "SCALE": [1.0, 2.0, 3.0],              
     "MODEL": ["hybrid_v3_1x1_double"],      
@@ -32,7 +32,7 @@ BATCH_SIZE = 128
 N_RUNS = 50          # Number of passes for CI calculation
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 RESULTS_CSV = "double_experiment_results.csv"
-PLOT_DIR = "plots/samples"  # <--- UPDATED PATH
+PLOT_DIR = "plots/samples"
 
 # Create plot directory if it doesn't exist
 os.makedirs(PLOT_DIR, exist_ok=True)
@@ -49,7 +49,6 @@ X_test_tensor = torch.tensor(X_test.reshape(-1, 1, 28, 56), dtype=torch.float32)
 y_test_tensor = torch.tensor(y_test, dtype=torch.long)
 
 
-# Prepare Tensors
 def prepare_loader(X, y, batch_size, shuffle=False):
     X_tensor = torch.tensor(X.reshape(-1, 1, 28, 56), dtype=torch.float32)
     y_tensor = torch.tensor(y, dtype=torch.long)
@@ -183,7 +182,7 @@ def generate_plots(model, prior, device, config_str, save_dir):
     plt.savefig(f"{save_dir}/{config_str}_samples.png")
     plt.close(fig2)
 
-    # 3. Interpolation (3 -> 9)
+    # 3. Interpolation (18 -> 23)
     digit_a_0 = 1
     digit_a_1 = 8
     digit_b_0 = 2

@@ -215,8 +215,6 @@ class GeneralFlow(nn.Module):
         # Ensure 4D input
         if x.dim() == 2: x = x.view(-1, 1, 28, 56)
             
-        # --- FIX: Initialize log_det as a vector, not a scalar ---
-        # Shape: (Batch_Size,)
         log_det_total = torch.zeros(x.size(0), device=x.device)
             
         # --- SCALE 1 ---
@@ -225,12 +223,10 @@ class GeneralFlow(nn.Module):
         for inv1x1, coupling in zip(self.flow1_inv1x1, self.flow1_couplings):
             # 1. Mix Channels (Learnable)
             x, ld_1x1 = inv1x1(x)
-            # ld_1x1 is a scalar, but adding it to a vector (log_det_total) is safe
             log_det_total += ld_1x1
             
             # 2. Coupling
             x, ld_coup = coupling(x)
-            # ld_coup is a vector (Batch,), now this addition works perfectly
             log_det_total += ld_coup
             
         # --- SCALE 2 ---
