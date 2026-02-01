@@ -2,3 +2,5 @@ __pycache__/
 *.pt
 *.pth
 *.log
+SingleMNIST/experiments/**/*.png
+DoubleMNIST/experiments/**/*.png
