@@ -13,6 +13,9 @@ sys.path.append(os.path.abspath(os.path.join('..', '..')))
 from utils import set_seed
 sys.path.append(os.path.join(os.path.dirname(__file__), '../priors'))
 from SimpleSplitGMM import SimpleSplitGMM
+from CheckerboardGMM import CheckerboardGMM
+sys.path.append(os.path.join(os.path.dirname(__file__), '../models'))
+
 
 # ==========================================
 # 1. CONFIGURATION GRID
@@ -20,7 +23,7 @@ from SimpleSplitGMM import SimpleSplitGMM
 HYPERPARAMS = {
     "SCALE": [1.0, 2.0, 3.0],              
     "MODEL": ["hybrid_v3_1x1_double"],      
-    "PRIOR": ["SimpleSplitGMM"],
+    "PRIOR": ["CheckerboardGMM"],
     "OPTIMIZER": ["Adam"],
     "TRANSFORM": [0.0, 0.25, 0.5],
     "DROPOUT": [0.0, 0.1, 0.2],
@@ -31,7 +34,7 @@ HYPERPARAMS = {
 BATCH_SIZE = 128
 N_RUNS = 50          # Number of passes for CI calculation
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-RESULTS_CSV = "double_experiment_results.csv"
+RESULTS_CSV = "prova_checkerboard_experiment_results.csv"
 PLOT_DIR = "plots/samples"
 
 # Create plot directory if it doesn't exist
@@ -48,7 +51,7 @@ X_test, y_test = data['X_test'], data['y_test']
 X_test_tensor = torch.tensor(X_test.reshape(-1, 1, 28, 56), dtype=torch.float32)
 y_test_tensor = torch.tensor(y_test, dtype=torch.long)
 
-
+# Prepare Tensors
 def prepare_loader(X, y, batch_size, shuffle=False):
     X_tensor = torch.tensor(X.reshape(-1, 1, 28, 56), dtype=torch.float32)
     y_tensor = torch.tensor(y, dtype=torch.long)
@@ -62,7 +65,6 @@ print("Data Loaded.")
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
-
 def get_confidence_interval(data_array, confidence=0.95):
     """Calculates mean and error margin for CI."""
     if len(data_array) < 2:
@@ -92,30 +94,29 @@ def evaluate_model(model, prior, loader, device, n_runs):
             for batch_X, batch_y in loader:
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
                 
-                # Dequantization
+                # Dequantization, Normalization, Centering
                 batch_X = (batch_X * 255.0 + torch.rand_like(batch_X)) / 256.0
                 batch_X = batch_X - 0.5
                 
                 # Forward Pass
                 z, sldj = model(batch_X)
                 
-                # --- Loss Calculation (User Logic) ---
+                # Loss
                 loss = prior.get_loss(z, sldj, batch_y)
                 run_loss += loss.item()
                 
-                # --- Accuracy Check ---
+                # Classification
                 z_flat = z.view(z.size(0), -1)
                 preds, _ = prior.classify(z_flat)
                 if isinstance(preds, list):
                     preds = torch.stack(preds, dim=1)
-                elif isinstance(preds, tuple): # Handling your previous logic
+                elif isinstance(preds, tuple):
                     preds = torch.stack(preds[0], dim=1) if isinstance(preds[0], list) else preds[0]
                 matched_rows = (preds == batch_y).all(dim=1)
                 run_correct += matched_rows.sum().item()
                 run_total += batch_y.size(0)
         
-        # Aggregate for this run
-        avg_loss = run_loss / len(loader) # Average batch loss
+        avg_loss = run_loss / len(loader)
         avg_acc = run_correct / run_total
         
         losses.append(avg_loss)
@@ -182,7 +183,7 @@ def generate_plots(model, prior, device, config_str, save_dir):
     plt.savefig(f"{save_dir}/{config_str}_samples.png")
     plt.close(fig2)
 
-    # 3. Interpolation (18 -> 23)
+    # 3. Interpolation (18 -> 23) with temp=0.25
     digit_a_0 = 1
     digit_a_1 = 8
     digit_b_0 = 2
@@ -233,15 +234,12 @@ def generate_plots(model, prior, device, config_str, save_dir):
             mu_left_z1 = prior.means[0][label1[0]].to(device)
             mu_right_z2 = prior.means[1][label2[1]].to(device)
 
-            mean_0_a = z1_flat[:784]
-            mean_0_b = mu_left_z1
+            left_z1 = prior.get_parts(z1_flat.unsqueeze(0))[0].squeeze(0)
+            right_z2 = prior.get_parts(z2_flat.unsqueeze(0))[1].squeeze(0)
 
-            mean_1_a = z2_flat[784:]
-            mean_1_b = mu_right_z2
-
-            z_hybrid_a = prior.get_full_latent([mean_0_a.unsqueeze(0), mean_1_a.unsqueeze(0)])
-            z_hybrid_b = prior.get_full_latent([mean_0_a.unsqueeze(0), mean_1_b.unsqueeze(0)])
-            z_hybrid_c = prior.get_full_latent([mean_0_b.unsqueeze(0), mean_1_a.unsqueeze(0)])
+            z_hybrid_a = prior.get_full_latent([left_z1.unsqueeze(0), right_z2.unsqueeze(0)])
+            z_hybrid_b = prior.get_full_latent([left_z1.unsqueeze(0), mu_right_z2.unsqueeze(0)])
+            z_hybrid_c = prior.get_full_latent([mu_left_z1.unsqueeze(0), right_z2.unsqueeze(0)])
 
             z_hybrid_structural_a = z_hybrid_a.view(1, 4, 14, 28)
             z_hybrid_structural_b = z_hybrid_b.view(1, 4, 14, 28)
@@ -274,8 +272,6 @@ def generate_plots(model, prior, device, config_str, save_dir):
 # ==========================================
 # 4. MAIN LOOP
 # ==========================================
-
-# Generate all combinations
 keys, values = zip(*HYPERPARAMS.items())
 combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
@@ -284,8 +280,6 @@ results = []
 set_seed(42)
 
 for config in combinations:
-    # Construct ID and Path
-    # ID Format: best_acc_1.0_hybrid_v2_Adam_0.5_0.2
     config_id = f"{config['TYPE']}_{config['SCALE']}_{config['MODEL']}_{config['PRIOR']}_{config['OPTIMIZER']}_{config['TRANSFORM']}_{config['DROPOUT']}"
     model_path = f"../experiments/models/GMM/{config_id}.pth"
     
@@ -301,7 +295,8 @@ for config in combinations:
         GeneralFlow = getattr(module, 'GeneralFlow')
         
         # Initialize
-        prior = SimpleSplitGMM(total_dim=1568, num_classes=10, num_attr=2, device=DEVICE, scale=config['SCALE'], fixed_means=True)
+        prior_class = globals()[config['PRIOR']]
+        prior = prior_class(total_dim=1568, num_classes=10, num_attr=2, device=DEVICE, scale=config['SCALE'], fixed_means=True)
         model = GeneralFlow().to(DEVICE)
         
         # Load State

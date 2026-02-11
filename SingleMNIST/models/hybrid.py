@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class SimpleConvNet(nn.Module):
     """
@@ -9,7 +10,6 @@ class SimpleConvNet(nn.Module):
     def __init__(self, hidden_dim=64, dropout_p=0.0):
         super().__init__()
         self.net = nn.Sequential(
-            # Input is 1 channel (grayscale), output hidden_dim
             nn.Conv2d(1, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
@@ -19,7 +19,6 @@ class SimpleConvNet(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
-            # Output is 2 channels: one for s (scale), one for t (translation)
             nn.Conv2d(hidden_dim, 2, kernel_size=3, padding=1)
         )
         
@@ -37,10 +36,9 @@ class ConvFlow(nn.Module):
         self.layers = nn.ModuleList()
         self.masks = []
         
-        # 1. Create Checkerboard Masks
-        # We define a generic 28x28 mask
+        # Create Checkerboard Masks
         mask = torch.zeros(1, 1, 28, 28)
-        # Create a checkerboard pattern
+
         for i in range(28):
             for j in range(28):
                 if (i + j) % 2 == 0:
@@ -50,9 +48,7 @@ class ConvFlow(nn.Module):
         mask_odd = 1 - mask
         
         for i in range(num_layers):
-            # Alternating masks
             self.masks.append(mask_even if i % 2 == 0 else mask_odd)
-            # The network that transforms the data
             self.layers.append(SimpleConvNet(hidden_dim, dropout_p=dropout_p))
 
     def forward(self, x):
@@ -101,11 +97,6 @@ class ConvFlow(nn.Module):
             x = (x - t) * torch.exp(-s)
             
         return x
-    
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
 class SimpleFlow(nn.Module):
@@ -146,7 +137,6 @@ class SimpleFlow(nn.Module):
             out = layer(masked_z)
             s, t = out.chunk(2, dim=1)
             
-            # Tanh clamping is crucial for stability in high dim
             s = torch.tanh(s) * (1 - mask)
             t = t * (1 - mask)
             
@@ -173,22 +163,13 @@ class SimpleFlow(nn.Module):
         return x
     
 
-import torch
-import torch.nn as nn
-
-
-
 class GeneralFlow(nn.Module):
     def __init__(self, dropout_p=0.0):
         super().__init__()
         
-        # 1. Convolutional Part (Locally smart)
-        # We use fewer layers here since the Linear part will help
         self.conv_flow = ConvFlow(num_layers=4, hidden_dim=64, dropout_p=dropout_p)
-        
-        # 2. Linear Part (Globally smart)
-        # Takes the flattened output of the Conv part
         self.linear_flow = SimpleFlow(input_dim=784, hidden_dim=1024, num_layers=4, dropout_p=dropout_p)
+
     def forward(self, x):
         log_det_total = 0
         
@@ -201,8 +182,6 @@ class GeneralFlow(nn.Module):
         log_det_total += log_det_conv
         
         # --- Stage 2: Flatten ---
-        # Output of conv_flow is (N, 784) because we fixed the return shape previously
-        # If your ConvFlow returns (N, 1, 28, 28), flatten it here:
         if z.dim() == 4:
             z = z.view(z.size(0), -1)
             
@@ -214,12 +193,11 @@ class GeneralFlow(nn.Module):
         return z, log_det_total
 
     def inverse(self, z):
-        # We must reverse the order: Linear Inverse -> Unflatten -> Conv Inverse
         
         # 1. Linear Inverse
         z = self.linear_flow.inverse(z)
         
-        # 2. Unflatten (handled inside ConvFlow.inverse usually, but let's be safe)
+        # 2. Unflatten
         if z.dim() == 2:
             z = z.view(-1, 1, 28, 28)
             

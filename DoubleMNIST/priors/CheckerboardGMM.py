@@ -43,6 +43,7 @@ class CheckerboardGMM(nn.Module):
             nll += 0.5 * (diff ** 2).sum(dim=1) + 0.5 * self.dims_per_attr * np.log(2 * np.pi)
         
         loss = (nll - sldj).mean()
+
         return loss
 
     def classify(self, z_flat):
@@ -60,6 +61,7 @@ class CheckerboardGMM(nn.Module):
             preds.append(sq_dist.argmax(1))
             complete_logits.append(sq_dist)
         
+        # Stack along dimension 1 to get shape (batch_size, num_attr)
         preds = torch.stack(preds, dim=1) 
         return preds, complete_logits
     
@@ -71,3 +73,9 @@ class CheckerboardGMM(nn.Module):
         for i in range(self.num_attr):
             z_flat[:, i::self.num_attr] = z_list[i]
         return z_flat
+
+    def get_parts(self, z_flat):
+        parts = []
+        for i in range(self.num_attr):
+            parts.append(z_flat[:, i::self.num_attr])
+        return parts

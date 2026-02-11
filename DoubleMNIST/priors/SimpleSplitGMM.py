@@ -6,13 +6,14 @@ class SimpleSplitGMM(nn.Module):
     def __init__(self, total_dim, num_classes, num_attr, device, scale, fixed_means=True):
         super().__init__()
 
-        dims_per_attr = total_dim // num_attr
+        # Ensure the total dimension is divisible by the number of attributes
+        assert total_dim % num_attr == 0, "total_dim must be divisible by num_attr"
 
-        self.means = []
+        dims_per_attr = total_dim // num_attr
         self.num_attr = num_attr
         self.dims_per_attr = dims_per_attr
         self.num_classes = num_classes
-
+        self.means = []
 
         if fixed_means:
             for i in range(num_attr):
@@ -28,14 +29,13 @@ class SimpleSplitGMM(nn.Module):
     def get_loss(self, z, sldj, labels):
         y = labels
         z_flat = z.view(z.shape[0], -1)
-        # Compute negative log-likelihood for each part using the correct class mean
+
         nll = 0
         for i in range(self.num_attr):
             start = i * self.dims_per_attr
             end = (i + 1) * self.dims_per_attr
             nll += 0.5 * ((z_flat[:, start:end] - self.means[i][y[:, i]]) ** 2).sum(dim=1) + 0.5 * self.dims_per_attr * np.log(2 * np.pi)
         
-        # Add change of variable term (sldj)
         loss = (nll - sldj).mean()
 
         return loss
@@ -44,6 +44,7 @@ class SimpleSplitGMM(nn.Module):
         chunks = [z_flat[:, i * self.dims_per_attr : (i + 1) * self.dims_per_attr] for i in range(self.num_attr)]
         preds = []
         complete_logits = []
+        
         for i in range(self.num_attr):
             # Calculating distance to means
             d = -((chunks[i].unsqueeze(1) - self.means[i].unsqueeze(0))**2).sum(2)
@@ -60,3 +61,11 @@ class SimpleSplitGMM(nn.Module):
         """
         z = torch.cat(z_list, dim=1)
         return z
+    
+    def get_parts(self, z_flat):
+        parts = []
+        for i in range(self.num_attr):
+            start = i * self.dims_per_attr
+            end = (i + 1) * self.dims_per_attr
+            parts.append(z_flat[:, start:end])
+        return parts

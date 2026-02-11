@@ -9,7 +9,7 @@ from multiprocessing import Process
 # --- Configuration ---
 SCALES = [1.0,2.0,3.0]
 MODELS = ['hybrid_v3_1x1_double']
-PRIORS = ['SimpleSplitGMM']
+PRIORS = ['CheckerboardGMM']
 OPTIMIZERS = ['Adam']
 TRANSFORMS = [0,0.25,0.5]
 DROPOUT_P = [0,0.1,0.2]

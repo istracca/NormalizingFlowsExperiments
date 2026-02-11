@@ -17,11 +17,11 @@ class IB_FactorizedPrior(nn.Module):
         z_flat = z.view(z.shape[0], -1)
         
         dists = -0.5 * ((z_flat.unsqueeze(1) - self.means.unsqueeze(0))**2).sum(2)        
-        # 1. Loss Discriminativa (L_Y)
+        # 1. Discriminative loss (L_Y)
         loss_cls = F.cross_entropy(dists, y)
         
-        # 2. Loss Generativa (L_X)
-        # LogSumExp sui logits per ottenere p(z) marginale
+        # 2. Generative loss (L_X)
+        # LogSumExp on logits to obtain marginal p(z)
         log_pz = torch.logsumexp(dists, dim=1)
         
         loss_gen = - (log_pz + sldj).mean() / z_flat.shape[1]

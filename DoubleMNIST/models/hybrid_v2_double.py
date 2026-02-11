@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class Squeeze(nn.Module):
     def forward(self, x):
@@ -20,14 +21,12 @@ class Squeeze(nn.Module):
 
 class ChannelCouplingLayer(nn.Module):
     """
-    Splits the tensor by CHANNELS, not by spatial mask.
-    This eliminates checkerboard artifacts.
+    Splits the tensor by channels, not by spatial mask.
     """
     def __init__(self, in_channels, hidden_dim=64, dropout_p=0.0):
         super().__init__()
         self.half_channels = in_channels // 2
         
-        # Condition net: Takes 'half_channels', outputs 'half_channels * 2' (s and t)
         self.net = nn.Sequential(
             nn.Conv2d(self.half_channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
@@ -79,7 +78,7 @@ class SqueezeFlow(nn.Module):
     def forward(self, x):
         log_det_total = 0
         
-        # 1. Squeeze: (N, 1, 28, 28) -> (N, 4, 14, 14)
+        # 1. Squeeze: (N, 1, 28, 56) -> (N, 4, 14, 28)
         x = self.squeeze(x)
         
         for i, layer in enumerate(self.layers):
@@ -94,19 +93,13 @@ class SqueezeFlow(nn.Module):
         return x, log_det_total
 
     def inverse(self, z):
-        # Reverse the loop
         for i, layer in reversed(list(enumerate(self.layers))):
-            # We must flip first because we flipped at the END of forward
+            # We must flip first because we flipped at the end of forward
             z = z.flip(dims=(1,))
             z = layer.inverse(z)
             
         x = self.squeeze.inverse(z)
         return x
-    
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
 class SimpleFlow(nn.Module):
@@ -149,7 +142,6 @@ class SimpleFlow(nn.Module):
             out = layer(masked_z)
             s, t = out.chunk(2, dim=1)
             
-            # Tanh clamping is crucial for stability in high dim
             s = torch.tanh(s) * (1 - mask)
             t = t * (1 - mask)
             
@@ -176,24 +168,16 @@ class SimpleFlow(nn.Module):
         return x
     
 
-import torch
-import torch.nn as nn
-
-
-
 class GeneralFlow(nn.Module):
     def __init__(self, dropout_p=0.0, height=28, width=56):
         super().__init__()
         self.height = height
         self.width = width
         
-        # 1. Convolutional Part (Locally smart)
-        # We use fewer layers here since the Linear part will help
+
         self.squeeze_flow = SqueezeFlow(num_layers=8, hidden_dim=64, dropout_p=dropout_p)
-        
-        # 2. Linear Part (Globally smart)
-        # Takes the flattened output of the Conv part
         self.linear_flow = SimpleFlow(height=self.height, width=self.width, hidden_dim=1024, num_layers=4, dropout_p=dropout_p)
+    
     def forward(self, x):
         log_det_total = 0
         
@@ -206,8 +190,6 @@ class GeneralFlow(nn.Module):
         log_det_total += log_det_conv
         
         # --- Stage 2: Flatten ---
-        # Output of squeeze_flow is (N, 1568) because we fixed the return shape previously
-        # If your ConvFlow returns (N, 1, 28, 56), flatten it here:
         if z.dim() == 4:
             z = z.view(z.size(0), -1)
             
@@ -219,12 +201,11 @@ class GeneralFlow(nn.Module):
         return z, log_det_total
 
     def inverse(self, z):
-        # We must reverse the order: Linear Inverse -> Unflatten -> Conv Inverse
         
         # 1. Linear Inverse
         z = self.linear_flow.inverse(z)
         
-        # 2. Unflatten (handled inside ConvFlow.inverse usually, but let's be safe)
+        # 2. Unflatten
         z_spatial = z.view(-1, 4, self.height // 2, self.width // 2)
             
         # 3. Conv Inverse

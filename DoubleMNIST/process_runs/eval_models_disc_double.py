@@ -50,7 +50,6 @@ print("Data Loaded.")
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
-
 def get_confidence_interval(data_array, confidence=0.95):
     """Calculates mean and error margin for CI."""
     if len(data_array) < 2:
@@ -98,8 +97,7 @@ def evaluate_model(model, loader, device, n_runs=10):
                 run_correct += ((preds1 == batch_y[:, 0]) & (preds2 == batch_y[:, 1])).sum().item()
                 run_total += batch_y.size(0)
         
-        # Aggregate for this run
-        avg_loss = run_loss / len(loader) # Average batch loss
+        avg_loss = run_loss / len(loader)
         avg_acc = run_correct / run_total
         
         losses.append(avg_loss)
@@ -111,8 +109,6 @@ def evaluate_model(model, loader, device, n_runs=10):
 # ==========================================
 # 4. MAIN LOOP
 # ==========================================
-
-# Generate all combinations
 keys, values = zip(*HYPERPARAMS.items())
 combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
@@ -121,8 +117,6 @@ results = []
 set_seed(42)
 
 for config in combinations:
-    # Construct ID and Path
-    # ID Format: best_acc_1.0_hybrid_v2_Adam_0.5_0.2
     config_id = f"{config['TYPE']}_{config['MODEL']}_{config['OPTIMIZER']}_{config['TRANSFORM']}_{config['DROPOUT']}"
     model_path = f"../experiments/models/Disc/{config_id}.pth"
     

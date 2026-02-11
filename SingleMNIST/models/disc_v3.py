@@ -23,7 +23,6 @@ class ConvResidualBlock(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
             
-            # Output matches input channels (for residual add), not channels*2
             nn.Conv2d(hidden_dim, channels, kernel_size=3, padding=1)
         )
         # Zero-init last layer so block starts as identity
@@ -36,7 +35,7 @@ class ConvResidualBlock(nn.Module):
 class LinearResidualBlock(nn.Module):
     """
     Discriminative equivalent of SimpleFlow (Linear) layer.
-    Structure matches your SimpleFlow: Linear -> Linear -> Linear.
+    Structure matches the one of SimpleFlow: Linear -> Linear -> Linear.
     """
     def __init__(self, dim, hidden_dim=2048, dropout_p=0.0):
         super().__init__()
@@ -49,7 +48,6 @@ class LinearResidualBlock(nn.Module):
             nn.LeakyReLU(0.1),
             nn.Dropout(p=dropout_p),
             
-            # Output matches input dim (for residual add)
             nn.Linear(hidden_dim, dim)
         )
         self.net[-1].weight.data.zero_()
@@ -63,12 +61,11 @@ class PseudoResNet(nn.Module):
         super().__init__()
         
         # --- SCALE 1 ---
-        # 1. Downsampling (Replaces Squeeze1)
-        # Map 1ch -> 4ch, reduce 28x28 -> 14x14
+        # 1. Downsampling (Replaces Squeeze)
+        # (1, 28, 28) -> (4, 14, 14)
         self.downsample1 = nn.Conv2d(1, 4, kernel_size=3, stride=2, padding=1)
         
-        # 2. Body (Replaces Flow Steps)
-        # 8 Blocks matching your Flow depth
+        # 2. Body (Replaces ConvFlow layers)
         self.scale1_layers = nn.ModuleList()
         for _ in range(8):
             self.scale1_layers.append(nn.Sequential(
@@ -80,10 +77,10 @@ class PseudoResNet(nn.Module):
 
         # --- SCALE 2 ---
         # 1. Downsampling (Replaces Squeeze2)
-        # Map 4ch -> 16ch, reduce 14x14 -> 7x7
+        # (4, 14, 14) -> (16, 7, 7)
         self.downsample2 = nn.Conv2d(4, 16, kernel_size=3, stride=2, padding=1)
         
-        # 2. Body
+        # 2. Body (Replaces ConvFlow layers)
         self.scale2_layers = nn.ModuleList()
         for _ in range(8):
             self.scale2_layers.append(nn.Sequential(
@@ -92,7 +89,6 @@ class PseudoResNet(nn.Module):
             ))
 
         # --- GLOBAL TAIL ---
-        # Flatten 16x7x7 -> 784
         flat_dim = 16 * 7 * 7
         
         # Linear Body (Replaces SimpleFlow)
@@ -102,32 +98,29 @@ class PseudoResNet(nn.Module):
                 LinearResidualBlock(dim=flat_dim, hidden_dim=2048, dropout_p=dropout_p)
             )
             
-        # Classification Head (Replaces GMM)
+        # Classification Head (not present in Flow model)
         self.head = nn.Linear(flat_dim, num_classes)
 
     def forward(self, x):
-        # 1. Scale 1 Processing
         if x.dim() == 2: x = x.view(-1, 1, 28, 28)
         
-        x = self.downsample1(x) # 28 -> 14
-        x = F.relu(x) # Activation after downsampling is standard
+        x = self.downsample1(x)
+        x = F.relu(x)
         
         for layer in self.scale1_layers:
             x = layer(x)
             
-        # 2. Scale 2 Processing
-        x = self.downsample2(x) # 14 -> 7
+        x = self.downsample2(x)
         x = F.relu(x)
         
         for layer in self.scale2_layers:
             x = layer(x)
             
-        # 3. Linear Processing
         x = x.view(x.size(0), -1) # Flatten to 784
         
         for layer in self.linear_layers:
             x = layer(x)
             
-        # 4. Classification
+        # Classification
         logits = self.head(x)
         return logits

@@ -16,7 +16,6 @@ from GaussianMixturePrior import GaussianMixturePrior
 # ==========================================
 # 1. CONFIGURATION GRID
 # ==========================================
-# Define the combinations you want to test here
 HYPERPARAMS = {
     "SCALE": [1.0, 2.0, 3.0],              
     "MODEL": ["hybrid_v3_1x1"],      
@@ -31,7 +30,7 @@ BATCH_SIZE = 128
 N_RUNS = 50          # Number of passes for CI calculation
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 RESULTS_CSV = "v3_experiment_results.csv"
-PLOT_DIR = "plots/samples"  # <--- UPDATED PATH
+PLOT_DIR = "plots/samples"
 
 # Create plot directory if it doesn't exist
 os.makedirs(PLOT_DIR, exist_ok=True)
@@ -59,7 +58,6 @@ print("Data Loaded.")
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
-
 def get_confidence_interval(data_array, confidence=0.95):
     """Calculates mean and error margin for CI."""
     if len(data_array) < 2:
@@ -96,7 +94,7 @@ def evaluate_model(model, prior, loader, device, n_runs=10):
                 # Forward Pass
                 z, sldj = model(batch_X)
                 
-                # --- Loss Calculation (User Logic) ---
+                # --- Loss Calculation ---
                 loss = prior.get_loss(z, sldj, batch_y)
                 run_loss += loss.item()
                 
@@ -109,7 +107,7 @@ def evaluate_model(model, prior, loader, device, n_runs=10):
                 run_total += batch_y.size(0)
         
         # Aggregate for this run
-        avg_loss = run_loss / len(loader) # Average batch loss
+        avg_loss = run_loss / len(loader)
         avg_acc = run_correct / run_total
         
         losses.append(avg_loss)
@@ -130,7 +128,7 @@ def generate_plots(model, prior, device, config_str, save_dir):
         for idx, target in enumerate(targets):
             # Prior mean
             z = prior.means[target].unsqueeze(0).to(device)
-            z_structural = z.view(1, 4, 14, 14) # Adjust shape based on model
+            z_structural = z.view(1, 4, 14, 14)
             img_gen = model.inverse(z_structural)
             
             ax = axes[idx // 5, idx % 5]
@@ -188,8 +186,6 @@ def generate_plots(model, prior, device, config_str, save_dir):
 # ==========================================
 # 4. MAIN LOOP
 # ==========================================
-
-# Generate all combinations
 keys, values = zip(*HYPERPARAMS.items())
 combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
@@ -198,8 +194,6 @@ results = []
 set_seed(42)
 
 for config in combinations:
-    # Construct ID and Path
-    # ID Format: best_acc_1.0_hybrid_v2_Adam_0.5_0.2
     config_id = f"{config['TYPE']}_{config['SCALE']}_{config['MODEL']}_{config['OPTIMIZER']}_{config['TRANSFORM']}_{config['DROPOUT']}"
     model_path = f"../experiments/models/GMM/{config_id}.pth"
     

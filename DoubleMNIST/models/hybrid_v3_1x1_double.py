@@ -48,7 +48,7 @@ class Invertible1x1Conv(nn.Module):
 
 class Squeeze(nn.Module):
     def forward(self, x):
-        # x: (Batch, 1, 28, 28) -> (Batch, 4, 14, 14)
+        # x: (Batch, 1, 28, 56) -> (Batch, 4, 14, 28)
         b, c, h, w = x.shape
         x = x.view(b, c, h // 2, 2, w // 2, 2)
         x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
@@ -56,7 +56,7 @@ class Squeeze(nn.Module):
         return x
 
     def inverse(self, x):
-        # x: (Batch, 4, 14, 14) -> (Batch, 1, 28, 28)
+        # x: (Batch, 4, 14, 28) -> (Batch, 1, 28, 56)
         b, c, h, w = x.shape
         x = x.view(b, c // 4, 2, 2, h, w)
         x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
@@ -65,8 +65,7 @@ class Squeeze(nn.Module):
 
 class ChannelCouplingLayer(nn.Module):
     """
-    Splits the tensor by CHANNELS, not by spatial mask.
-    This eliminates checkerboard artifacts.
+    Splits the tensor by channels, not by spatial mask.
     """
     def __init__(self, in_channels, hidden_dim=64, dropout_p=0.0):
         super().__init__()
@@ -152,7 +151,6 @@ class SimpleFlow(nn.Module):
             out = layer(masked_z)
             s, t = out.chunk(2, dim=1)
             
-            # Tanh clamping is crucial for stability in high dim
             s = torch.tanh(s) * (1 - mask)
             t = t * (1 - mask)
             
@@ -183,7 +181,7 @@ class GeneralFlow(nn.Module):
     def __init__(self, dropout_p=0.0):
         super().__init__()
         
-        # --- SCALE 1: 28x28 -> 14x14 ---
+        # --- SCALE 1: 1x28x56 -> 4x14x28 ---
         self.squeeze1 = Squeeze()
         
         # 4 Layers at Scale 1
@@ -195,7 +193,7 @@ class GeneralFlow(nn.Module):
             self.flow1_inv1x1.append(Invertible1x1Conv(channels=4))
             self.flow1_couplings.append(ChannelCouplingLayer(in_channels=4, hidden_dim=64, dropout_p=dropout_p))
         
-        # --- SCALE 2: 14x14 -> 7x7 ---
+        # --- SCALE 2: 4x14x28 -> 16x7x14 ---
         self.squeeze2 = Squeeze()
         
         # 4 Layers at Scale 2
@@ -203,12 +201,11 @@ class GeneralFlow(nn.Module):
         self.flow2_inv1x1 = nn.ModuleList()
         
         for _ in range(8):
-            # Channels are 16 now
             self.flow2_inv1x1.append(Invertible1x1Conv(channels=16))
             self.flow2_couplings.append(ChannelCouplingLayer(in_channels=16, hidden_dim=128, dropout_p=dropout_p))
         
         # --- GLOBAL: Linear ---
-        # Flatten input: 16 * 7 * 7 = 1568
+        # Flatten input: 16 * 7 * 14 = 1568
         self.linear_flow = SimpleFlow(input_dim=1568, hidden_dim=2048, num_layers=4, dropout_p=dropout_p)
 
     def forward(self, x):
@@ -251,10 +248,6 @@ class GeneralFlow(nn.Module):
         z = z.view(-1, 16, 7, 14)
         
         # --- REVERSE SCALE 2 ---
-        # Note: We must iterate in reverse and apply operations in reverse order
-        # Forward: Inv1x1 -> Coupling
-        # Inverse: Coupling_Inv -> Inv1x1_Inv
-        
         for inv1x1, coupling in zip(reversed(self.flow2_inv1x1), reversed(self.flow2_couplings)):
             z = coupling.inverse(z)
             z = inv1x1.inverse(z)

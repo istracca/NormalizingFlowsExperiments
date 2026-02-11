@@ -65,14 +65,12 @@ class Squeeze(nn.Module):
 
 class ChannelCouplingLayer(nn.Module):
     """
-    Splits the tensor by CHANNELS, not by spatial mask.
-    This eliminates checkerboard artifacts.
+    Splits the tensor by channels, not by spatial mask.
     """
     def __init__(self, in_channels, hidden_dim=64, dropout_p=0.0):
         super().__init__()
         self.half_channels = in_channels // 2
         
-        # Condition net: Takes 'half_channels', outputs 'half_channels * 2' (s and t)
         self.net = nn.Sequential(
             nn.Conv2d(self.half_channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
@@ -151,7 +149,6 @@ class SimpleFlow(nn.Module):
             out = layer(masked_z)
             s, t = out.chunk(2, dim=1)
             
-            # Tanh clamping is crucial for stability in high dim
             s = torch.tanh(s) * (1 - mask)
             t = t * (1 - mask)
             
@@ -182,7 +179,7 @@ class GeneralFlow(nn.Module):
     def __init__(self, dropout_p=0.0):
         super().__init__()
         
-        # --- SCALE 1: 28x28 -> 14x14 ---
+        # --- SCALE 1: 1x28x28 -> 4x14x14 ---
         self.squeeze1 = Squeeze()
         
         # 4 Layers at Scale 1
@@ -194,7 +191,7 @@ class GeneralFlow(nn.Module):
             self.flow1_inv1x1.append(Invertible1x1Conv(channels=4))
             self.flow1_couplings.append(ChannelCouplingLayer(in_channels=4, hidden_dim=64, dropout_p=dropout_p))
         
-        # --- SCALE 2: 14x14 -> 7x7 ---
+        # --- SCALE 2: 4x14x14 -> 16x7x7 ---
         self.squeeze2 = Squeeze()
         
         # 4 Layers at Scale 2
@@ -202,20 +199,16 @@ class GeneralFlow(nn.Module):
         self.flow2_inv1x1 = nn.ModuleList()
         
         for _ in range(8):
-            # Channels are 16 now
             self.flow2_inv1x1.append(Invertible1x1Conv(channels=16))
             self.flow2_couplings.append(ChannelCouplingLayer(in_channels=16, hidden_dim=128, dropout_p=dropout_p))
         
-        # --- GLOBAL: Linear ---
+        # --- Linear ---
         # Flatten input: 16 * 7 * 7 = 784
         self.linear_flow = SimpleFlow(input_dim=784, hidden_dim=2048, num_layers=4, dropout_p=dropout_p)
 
     def forward(self, x):
-        # Ensure 4D input
         if x.dim() == 2: x = x.view(-1, 1, 28, 28)
             
-        # --- FIX: Initialize log_det as a vector, not a scalar ---
-        # Shape: (Batch_Size,)
         log_det_total = torch.zeros(x.size(0), device=x.device)
             
         # --- SCALE 1 ---
@@ -224,12 +217,10 @@ class GeneralFlow(nn.Module):
         for inv1x1, coupling in zip(self.flow1_inv1x1, self.flow1_couplings):
             # 1. Mix Channels (Learnable)
             x, ld_1x1 = inv1x1(x)
-            # ld_1x1 is a scalar, but adding it to a vector (log_det_total) is safe
             log_det_total += ld_1x1
             
             # 2. Coupling
             x, ld_coup = coupling(x)
-            # ld_coup is a vector (Batch,), now this addition works perfectly
             log_det_total += ld_coup
             
         # --- SCALE 2 ---
@@ -254,10 +245,6 @@ class GeneralFlow(nn.Module):
         z = z.view(-1, 16, 7, 7)
         
         # --- REVERSE SCALE 2 ---
-        # Note: We must iterate in reverse and apply operations in reverse order
-        # Forward: Inv1x1 -> Coupling
-        # Inverse: Coupling_Inv -> Inv1x1_Inv
-        
         for inv1x1, coupling in zip(reversed(self.flow2_inv1x1), reversed(self.flow2_couplings)):
             z = coupling.inverse(z)
             z = inv1x1.inverse(z)

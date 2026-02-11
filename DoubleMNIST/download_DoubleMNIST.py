@@ -1,3 +1,6 @@
+import os
+import sys
+sys.path.append('..')
 from utils import set_seed
 import numpy as np
 import matplotlib.pyplot as plt

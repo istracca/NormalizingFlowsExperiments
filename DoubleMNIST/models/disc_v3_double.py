@@ -48,7 +48,6 @@ class LinearResidualBlock(nn.Module):
             nn.LeakyReLU(0.1),
             nn.Dropout(p=dropout_p),
             
-            # Output matches input dim (for residual add)
             nn.Linear(hidden_dim, dim)
         )
         self.net[-1].weight.data.zero_()
@@ -62,20 +61,26 @@ class PseudoResNet(nn.Module):
         super().__init__()
         
         # --- SCALE 1 ---
-        # Input 28x56 -> Output 14x28
+        # 1. Downsampling (Replaces Squeeze)
+        # (1, 28, 56) -> (4, 14, 28)
         self.downsample1 = nn.Conv2d(1, 4, kernel_size=3, stride=2, padding=1)
         
+        # 2. Body (Replaces ConvFlow layers)
         self.scale1_layers = nn.ModuleList()
         for _ in range(8):
             self.scale1_layers.append(nn.Sequential(
+                # Replaces Invertible1x1Conv
                 nn.Conv2d(4, 4, kernel_size=1), 
+                # Replaces ChannelCouplingLayer
                 ConvResidualBlock(channels=4, hidden_dim=64, dropout_p=dropout_p)
             ))
 
         # --- SCALE 2 ---
-        # Input 14x28 -> Output 7x14
+        # 1. Downsampling (Replaces Squeeze2)
+        # (4, 14, 28) -> (16, 7, 14)
         self.downsample2 = nn.Conv2d(4, 16, kernel_size=3, stride=2, padding=1)
         
+        # 2. Body (Replaces ConvFlow layers)
         self.scale2_layers = nn.ModuleList()
         for _ in range(8):
             self.scale2_layers.append(nn.Sequential(
@@ -84,21 +89,20 @@ class PseudoResNet(nn.Module):
             ))
 
         # --- GLOBAL TAIL ---
-        # Flatten: 16 channels * 7 height * 14 width = 1568
         flat_dim = 16 * 7 * 14 
         
+        # Linear Body (Replaces SimpleFlow)
         self.linear_layers = nn.ModuleList()
         for _ in range(4):
             self.linear_layers.append(
                 LinearResidualBlock(dim=flat_dim, hidden_dim=2048, dropout_p=dropout_p)
             )
             
-        # Head must match the flatten size!
+        # Two separate heads for the two digits
         self.head_digit1 = nn.Linear(flat_dim, num_classes)
         self.head_digit2 = nn.Linear(flat_dim, num_classes)
 
     def forward(self, x):
-        # 1. Scale 1 Processing
         if x.dim() == 2: 
             x = x.view(-1, 1, 28, 56) # Handle DoubleMNIST shape
         
@@ -108,20 +112,18 @@ class PseudoResNet(nn.Module):
         for layer in self.scale1_layers:
             x = layer(x)
             
-        # 2. Scale 2 Processing
         x = self.downsample2(x) # 14x28 -> 7x14
         x = F.relu(x)
         
         for layer in self.scale2_layers:
             x = layer(x)
             
-        # 3. Linear Processing
         x = x.view(x.size(0), -1) # Flattens to (N, 1568)
         
         for layer in self.linear_layers:
             x = layer(x)
             
-        # 4. Classification
+        # Classification
         logits1 = self.head_digit1(x) # (N, 10)
         logits2 = self.head_digit2(x) # (N, 10)
         
