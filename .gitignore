@@ -4,7 +4,7 @@ __pycache__/
 *.log
 SingleMNIST/**/*.png
 DoubleMNIST/**/*.png
-ColoredDoubleMNIST/**/*.png
+CBM/**/*.png
 EasyColoredDoubleMNIST/**/*.png
 **/experiments/**/*.csv
 *.npz
