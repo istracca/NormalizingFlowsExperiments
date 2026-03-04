@@ -13,10 +13,11 @@ import kornia.augmentation as K
 import sys
 sys.path.append('../..')
 from utils import set_seed
-from save_samples import save_samples_double_colored
+from save_samples import save_samples_double_colored, save_samples_double_colored_style
 sys.path.append('../priors')
-# from CheckerboardGMM import CheckerboardGMM
-from SimpleSplitGMM import SimpleSplitGMM
+from SimpleSplitIB import SimpleSplitIB
+from CheckerboardIB import CheckerboardIB
+from CheckerboardIB_style import CheckerboardIB as CheckerboardIB_style
 sys.path.append('../models')
 
 
@@ -24,28 +25,38 @@ set_seed(42)
 parser = argparse.ArgumentParser(description='Train a flow-based model on MNIST.')
 parser.add_argument('--scale', type=float, default=1.0, help='Scale parameter for the prior')
 parser.add_argument('--model', type=str, default='hybrid_v3_1x1_double', help='Model name')
-parser.add_argument('--prior', type=str, default='SimpleSplitGMM', choices=['SimpleSplitGMM', 'CheckerboardGMM'], help='Prior type')
+parser.add_argument('--prior', type=str, default='CheckerboardIB', choices=['SimpleSplitIB', 'CheckerboardIB', 'CheckerboardIB_style'], help='Prior type')
 parser.add_argument('--optimizer', type=str, default='Adam', choices=['Adam', 'SGD'], help='Optimizer to use')
+parser.add_argument('--beta', type=float, default=1.0, help='Beta parameter for the IB loss')
+parser.add_argument('--fixed_means', action='store_true', help='Whether to use fixed means in the prior')
 parser.add_argument('--transform', type=float, default=0.0, help='Percentage of data transformation to apply')
 parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability for the model')
+parser.add_argument('--version', type=str, default='2_attr', choices=['2_attr', '4_attr'], help='Use 2 attributes (only digits) or 4 attributes (digits + colors)')
 args = parser.parse_args()
 
 SCALE = args.scale
 MODEL = args.model
 PRIOR = args.prior
 OPTIMIZER = args.optimizer
+BETA = args.beta
+FIXED_MEANS = args.fixed_means
 TRANSFORM = args.transform
 DROPOUT = args.dropout
-
+VERSION = args.version
 module = importlib.import_module(MODEL)
 GeneralFlow = getattr(module, 'GeneralFlow')
 
 # Recover datasets from files
-data = np.load('../data/colored_double_mnist.npz')
+if VERSION == '2_attr':
+    data = np.load('../data/easy_colored_double_mnist.npz')
+    arr_num_classes = [10, 10]
+elif VERSION == '4_attr':
+    data = np.load('../data/easy_colored_double_mnist_with_attributes.npz')
+    arr_num_classes = [10, 10, 7, 7]
 X_train, y_train = data['X_train'], data['y_train']
 X_val, y_val = data['X_val'], data['y_val']
 X_test, y_test = data['X_test'], data['y_test']
-print("Datasets loaded from colored_double_mnist.npz")
+print(f"Datasets loaded")
 print(X_train.shape, y_train.shape)
 print(X_val.shape, y_val.shape)
 print(X_test.shape, y_test.shape)
@@ -65,10 +76,15 @@ val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 set_seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GeneralFlow(dropout_p=DROPOUT).to(device)
-if PRIOR == 'CheckerboardGMM':
-    prior = CheckerboardGMM(total_dim=4704, num_classes=10, num_attr=2, device=device, scale=SCALE, fixed_means=False).to(device)
-elif PRIOR == 'SimpleSplitGMM':
-    prior = SimpleSplitGMM(total_dim=4704, num_classes=10, num_attr=2, device=device, scale=SCALE, fixed_means=False).to(device)
+if PRIOR == 'CheckerboardIB':
+    prior = CheckerboardIB(total_dim=4704, arr_num_classes=arr_num_classes, beta=BETA, device=device, scale=SCALE, fixed_means=FIXED_MEANS).to(device)
+    save_samples_fun = save_samples_double_colored
+elif PRIOR == 'SimpleSplitIB':
+    prior = SimpleSplitIB(total_dim=4704, arr_num_classes=arr_num_classes, beta=BETA, device=device, scale=SCALE, fixed_means=FIXED_MEANS).to(device)
+    save_samples_fun = save_samples_double_colored
+elif PRIOR == 'CheckerboardIB_style':
+    prior = CheckerboardIB_style(total_dim=4704, arr_num_classes=arr_num_classes, beta=BETA, device=device, scale=SCALE, fixed_means=FIXED_MEANS).to(device)
+    save_samples_fun = save_samples_double_colored_style
 
 # gpu_transform = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)).to(device)
 gpu_transform = K.RandomAffine(degrees=10, translate=(0.1, 0.1), p=1.0).to(device)
@@ -86,31 +102,31 @@ patience = 10
 factor = 0.5
 patience_val_loss = 10
 threshold_val_loss = 1e5
-threshold_scheduler = 0.5
+threshold_scheduler = 0.0005
 
 
-os.makedirs(os.path.dirname(f'../experiments/logs/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.log'), exist_ok=True)
+os.makedirs(os.path.dirname(f'../experiments/logs/IB/{VERSION}/IB_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.log'), exist_ok=True)
 # Set up logging to file
 logging.basicConfig(
-    filename=f'../experiments/logs/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.log',
+    filename=f'../experiments/logs/IB/{VERSION}/IB_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.log',
     filemode='w',
     format='%(asctime)s %(levelname)s: %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger()
 
-os.makedirs(os.path.dirname(f'../experiments/csv/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.csv'), exist_ok=True)
-csv_path = f'../experiments/csv/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.csv'
+os.makedirs(os.path.dirname(f'../experiments/csv/IB/{VERSION}/IB_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.csv'), exist_ok=True)
+csv_path = f'../experiments/csv/IB/{VERSION}/IB_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.csv'
 # clear existing file or create new one
 if os.path.exists(csv_path):
     os.remove(csv_path)
 
-headers = ['epoch', 'train_loss', 'val_loss', 'train_acc', 'val_acc', 'lr']
+headers = ['epoch', 'train_loss', 'train_gen_loss', 'train_cls_loss', 'val_loss', 'val_gen_loss', 'val_cls_loss', 'train_acc', 'val_acc', 'lr']
 if not os.path.exists(csv_path):
     with open(csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
-save_dir = f'../experiments/samples/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}'
+save_dir = f'../experiments/samples/IB/{VERSION}/IB_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}'
 os.makedirs(save_dir, exist_ok=True)
 
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, patience=patience, threshold=threshold_scheduler, threshold_mode='abs', verbose=True)
@@ -123,6 +139,8 @@ epochs_with_enormous_loss = 0
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
+    train_gen_loss = 0.0
+    train_cls_loss = 0.0
     train_correct = 0
     train_total = 0
     for batch_X, batch_y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
@@ -135,14 +153,14 @@ for epoch in range(num_epochs):
                 batch_X[idx] = gpu_transform(batch_X[idx])
         # dequantization
         batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
-        # batch_X = batch_X - 0.5
+        batch_X = batch_X - 0.5
 
         optimizer.zero_grad()
         if batch_X.dim() == 2:
             batch_X = batch_X.view(-1, 3, 28, 56)
 
         z, sldj = model(batch_X)
-        loss = prior.get_loss(z, sldj, batch_y)
+        loss, loss_gen, loss_cls = prior.get_loss(z, sldj, batch_y)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
@@ -150,6 +168,8 @@ for epoch in range(num_epochs):
 
         optimizer.step()
         train_loss += loss.item()
+        train_gen_loss += loss_gen.item()
+        train_cls_loss += loss_cls.item()
 
         z_flat = z.view(z.size(0), -1)
         preds, _ = prior.classify(z_flat)
@@ -161,10 +181,14 @@ for epoch in range(num_epochs):
         train_correct += matched_rows.sum().item()
         train_total += batch_y.size(0)
     train_loss /= len(train_loader)
+    train_gen_loss /= len(train_loader)
+    train_cls_loss /= len(train_loader)
     train_acc = train_correct / train_total
 
     model.eval()
     val_loss = 0.0
+    val_gen_loss = 0.0
+    val_cls_loss = 0.0
     val_correct = 0
     val_total = 0
     with torch.no_grad():
@@ -173,11 +197,13 @@ for epoch in range(num_epochs):
 
             # dequantization
             batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
-            # batch_X = batch_X - 0.5
+            batch_X = batch_X - 0.5
 
             z, sldj = model(batch_X)
-            loss = prior.get_loss(z, sldj, batch_y)
+            loss, loss_gen, loss_cls = prior.get_loss(z, sldj, batch_y)
             val_loss += loss.item()
+            val_gen_loss += loss_gen.item()
+            val_cls_loss += loss_cls.item()
 
             z_flat = z.view(z.size(0), -1)
             preds, _ = prior.classify(z_flat)
@@ -190,6 +216,8 @@ for epoch in range(num_epochs):
             val_total += batch_y.size(0)
 
     val_loss /= len(val_loader)
+    val_gen_loss /= len(val_loader)
+    val_cls_loss /= len(val_loader)
     val_acc = val_correct / val_total
 
     scheduler.step(train_loss)
@@ -206,7 +234,7 @@ for epoch in range(num_epochs):
         logger.info(f"Breaking loop: Learning rate reduced more than {max_reductions} times.")
         break
 
-    os.makedirs(os.path.dirname(f'../experiments/models/GMM/best_loss_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth'), exist_ok=True)
+    os.makedirs(os.path.dirname(f'../experiments/models/IB/{VERSION}/best_loss_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth'), exist_ok=True)
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         torch.save({
@@ -215,7 +243,7 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/GMM/best_loss_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+        }, f'../experiments/models/IB/{VERSION}/best_loss_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')
 
     if val_loss > threshold_val_loss:
         epochs_with_enormous_loss += 1
@@ -233,10 +261,11 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/GMM/best_acc_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+        }, f'../experiments/models/IB/{VERSION}/best_acc_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')
 
     logger.info(
-        f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, '
+        f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Gen Loss: {train_gen_loss:.4f}, '
+        f'Train Cls Loss: {train_cls_loss:.4f}, Val Loss: {val_loss:.4f}, Val Gen Loss: {val_gen_loss:.4f}, Val Cls Loss: {val_cls_loss:.4f}, '
         f'Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}'
     )
 
@@ -245,14 +274,18 @@ for epoch in range(num_epochs):
         writer.writerow({
             'epoch': epoch + 1,
             'train_loss': train_loss,
+            'train_gen_loss': train_gen_loss,
+            'train_cls_loss': train_cls_loss,
             'val_loss': val_loss,
+            'val_gen_loss': val_gen_loss,
+            'val_cls_loss': val_cls_loss,
             'train_acc': train_acc,
             'val_acc': val_acc,
             'lr': current_lr
         })
 
     if epoch % 10 == 0:
-        save_samples_double_colored(model, prior, device, epoch, save_dir=save_dir, temp=0)
+        save_samples_fun(model, prior, device, num_attr=len(arr_num_classes), epoch=epoch, save_dir=save_dir, temp=0)
 
     
 
@@ -261,4 +294,4 @@ torch.save({
     'prior_state_dict': prior.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'means': prior.means
-}, f'../experiments/models/GMM/final_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+}, f'../experiments/models/IB/{VERSION}/final_{SCALE}_{MODEL}_{PRIOR}_{BETA}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')

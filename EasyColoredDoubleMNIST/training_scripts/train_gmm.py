@@ -13,10 +13,12 @@ import kornia.augmentation as K
 import sys
 sys.path.append('../..')
 from utils import set_seed
-from save_samples import save_samples_double_colored
+from save_samples import save_samples_double_colored, save_samples_double_colored_ind, save_samples_double_colored_style
 sys.path.append('../priors')
 from SimpleSplitGMM import SimpleSplitGMM
 from CheckerboardGMM import CheckerboardGMM
+from CheckerboardGMM_ind import CheckerboardGMM as CheckerboardGMM_ind
+from CheckerboardGMM_style import CheckerboardGMM as CheckerboardGMM_style
 sys.path.append('../models')
 
 
@@ -24,7 +26,7 @@ set_seed(42)
 parser = argparse.ArgumentParser(description='Train a flow-based model on MNIST.')
 parser.add_argument('--scale', type=float, default=1.0, help='Scale parameter for the prior')
 parser.add_argument('--model', type=str, default='hybrid_v3_1x1_double', help='Model name')
-parser.add_argument('--prior', type=str, default='SimpleSplitGMM', choices=['SimpleSplitGMM', 'CheckerboardGMM'], help='Prior type')
+parser.add_argument('--prior', type=str, default='CheckerboardGMM', choices=['SimpleSplitGMM', 'CheckerboardGMM', 'CheckerboardGMM_ind', 'CheckerboardGMM_style'], help='Prior type')
 parser.add_argument('--optimizer', type=str, default='Adam', choices=['Adam', 'SGD'], help='Optimizer to use')
 parser.add_argument('--transform', type=float, default=0.0, help='Percentage of data transformation to apply')
 parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability for the model')
@@ -72,9 +74,17 @@ set_seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GeneralFlow(dropout_p=DROPOUT).to(device)
 if PRIOR == 'CheckerboardGMM':
-    prior = CheckerboardGMM(total_dim=4704, arr_num_classes=arr_num_classes, num_attr=len(arr_num_classes), device=device, scale=SCALE, fixed_means=False).to(device)
+    prior = CheckerboardGMM(total_dim=4704, arr_num_classes=arr_num_classes, device=device, scale=SCALE, fixed_means=False).to(device)
+    save_samples_fun = save_samples_double_colored
 elif PRIOR == 'SimpleSplitGMM':
-    prior = SimpleSplitGMM(total_dim=4704, arr_num_classes=arr_num_classes, num_attr=len(arr_num_classes), device=device, scale=SCALE, fixed_means=False).to(device)
+    prior = SimpleSplitGMM(total_dim=4704, arr_num_classes=arr_num_classes, device=device, scale=SCALE, fixed_means=False).to(device)
+    save_samples_fun = save_samples_double_colored
+elif PRIOR == 'CheckerboardGMM_ind':
+    prior = CheckerboardGMM_ind(total_dim=4704, arr_num_classes=arr_num_classes, device=device, scale=SCALE, fixed_means=False).to(device)
+    save_samples_fun = save_samples_double_colored_ind
+elif PRIOR == 'CheckerboardGMM_style':
+    prior = CheckerboardGMM_style(total_dim=4704, arr_num_classes=arr_num_classes, device=device, scale=SCALE, fixed_means=False).to(device)
+    save_samples_fun = save_samples_double_colored_style
 
 # gpu_transform = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)).to(device)
 gpu_transform = K.RandomAffine(degrees=10, translate=(0.1, 0.1), p=1.0).to(device)
@@ -85,6 +95,7 @@ elif OPTIMIZER == 'SGD':
     optimizer = optim.SGD(list(model.parameters()) + list(prior.parameters()), lr=1e-4, momentum=0.9, weight_decay=1e-5)
 
 print(list(prior.parameters()))
+print(list(prior.means))
 
 num_epochs = 30000
 max_reductions = 10
@@ -258,7 +269,7 @@ for epoch in range(num_epochs):
         })
 
     if epoch % 10 == 0:
-        save_samples_double_colored(model, prior, device, num_attr=len(arr_num_classes), epoch=epoch, save_dir=save_dir, temp=0)
+        save_samples_fun(model, prior, device, num_attr=len(arr_num_classes), epoch=epoch, save_dir=save_dir, temp=0)
 
     
 

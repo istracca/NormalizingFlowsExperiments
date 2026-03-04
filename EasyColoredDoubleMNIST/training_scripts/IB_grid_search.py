@@ -7,18 +7,20 @@ import torch
 from multiprocessing import Process
 
 # --- Configuration ---
-SCALES = [1.0,2.0,3.0]
+SCALES = [1.0]
 MODELS = ['hybrid_v3_1x1_double']
-PRIORS = ['SimpleSplitGMM']
+PRIORS = ['CheckerboardIB', 'CheckerboardIB_style']
 OPTIMIZERS = ['Adam']
-TRANSFORMS = [0.5]
-DROPOUT_P = [0.1,0.2]
+BETAS = [0.001, 0.01, 0.1]
+TRANSFORMS = [0.25, 0.5, 0.75]
+DROPOUT_P = [0.1, 0.2, 0.3]
 VERSION = ['2_attr','4_attr']
+FIXED_MEANS = [False]
 
 JOBS_PER_GPU = 3
 
 # Generate all combinations
-combinations = list(itertools.product(SCALES, MODELS, PRIORS, OPTIMIZERS, TRANSFORMS, DROPOUT_P, VERSION))
+combinations = list(itertools.product(SCALES, MODELS, PRIORS, OPTIMIZERS, BETAS, TRANSFORMS, DROPOUT_P, VERSION, FIXED_MEANS))
 total_runs = len(combinations)
 
 def run_worker(worker_id, gpu_id, experiments):
@@ -26,20 +28,27 @@ def run_worker(worker_id, gpu_id, experiments):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
-    for i, (scale, model, prior, opt, trans, dropout, version) in enumerate(experiments):
+    for i, (scale, model, prior, opt, beta, trans, dropout, version, fix_m) in enumerate(experiments):
+        path = f"../experiments/logs/IB/{version}/IB_{scale}_{model}_{prior}_{beta}_{opt}_{trans}_{dropout}_False.log"
+        if os.path.exists(path):
+            print(f"Skipping existing log: {path}")
+            continue
         print(f"\n[GPU {gpu_id} - Experiment {i+1}/{len(experiments)}]")
-        print(f"Params: Scale={scale}, Model={model}, Prior={prior}, Opt={opt}, Transform={trans}, Dropout={dropout}, Version={version}")
+        print(f"Params: Scale={scale}, Model={model}, Prior={prior}, Beta={beta}, Opt={opt}, Transform={trans}, Dropout={dropout}, Version={version}")
 
         cmd = [
-            sys.executable, "train_gmm_double_col_attr.py",
+            sys.executable, "train_ib.py",
             "--scale", str(scale),
             "--model", model,
             "--optimizer", opt,
             "--prior", prior,
+            "--beta", str(beta),
             "--transform", str(trans),
             "--dropout", str(dropout),
             "--version", version
         ]
+        if fix_m:
+            cmd.append("--fixed_means")
 
         try:
             subprocess.run(cmd, check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
