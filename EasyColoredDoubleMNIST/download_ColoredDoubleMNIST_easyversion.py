@@ -41,11 +41,9 @@ def apply_random_color(batch_imgs):
     noise = np.random.normal(loc=0.0, scale=0.1, size=(N, 3))
     noisy_colors_flat = np.clip(chosen_colors + noise, 0.0, 1.0)
 
-    # Calculate Confidence: distance to all 7 base colors
-    # We use -distance * 10.0 to create a sharp softmax probability
+    # Calculate Confidence
     dists = np.linalg.norm(noisy_colors_flat[:, np.newaxis, :] - BASE_COLORS, axis=2)
     confidences_all = softmax(-dists * 10.0, axis=1)
-    # Get the confidence of the specific color we assigned
     confidences = confidences_all[np.arange(N), color_indices]
 
     # Final Image Construction
@@ -109,7 +107,7 @@ np.savez_compressed('data/easy_colored_double_mnist.npz',
                     X_val=X_val.astype(np.float32), y_val=y_val_d,
                     X_test=X_test.astype(np.float32), y_test=y_test_d)
 
-# --- FIX START ---
+
 print("Saving Version 2: Enhanced (Digits + Color Attributes)...")
 
 # Concatenate arrays to create shape (N, 4): [left_digit, right_digit, left_color, right_color]
@@ -122,6 +120,6 @@ np.savez_compressed('data/easy_colored_double_mnist_with_attributes.npz',
                     X_train=X_train.astype(np.float32), y_train=y_train_combined,
                     X_val=X_val.astype(np.float32), y_val=y_val_combined,
                     X_test=X_test.astype(np.float32), y_test=y_test_combined)
-# --- FIX END ---
+
 
 print("Both datasets have been saved successfully.")

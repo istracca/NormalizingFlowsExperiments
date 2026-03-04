@@ -48,7 +48,7 @@ class Invertible1x1Conv(nn.Module):
 
 class Squeeze(nn.Module):
     def forward(self, x):
-        # x: (Batch, 1, 28, 28) -> (Batch, 4, 14, 14)
+        # x: (Batch, 3, 28, 28) -> (Batch, 4, 14, 14)
         b, c, h, w = x.shape
         x = x.view(b, c, h // 2, 2, w // 2, 2)
         x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
@@ -56,7 +56,7 @@ class Squeeze(nn.Module):
         return x
 
     def inverse(self, x):
-        # x: (Batch, 4, 14, 14) -> (Batch, 1, 28, 28)
+        # x: (Batch, 4, 14, 14) -> (Batch, 3, 28, 28)
         b, c, h, w = x.shape
         x = x.view(b, c // 4, 2, 2, h, w)
         x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
@@ -175,7 +175,7 @@ class SimpleFlow(nn.Module):
             
             x = (x - t) * torch.exp(-s)
             
-        x = x.view(-1, 1, 28, 56)
+        x = x.view(-1, 3, 28, 56)
         return x
     
 
@@ -212,7 +212,7 @@ class GeneralFlow(nn.Module):
         self.linear_flow = SimpleFlow(input_dim=4704, hidden_dim=2048, num_layers=4, dropout_p=dropout_p)
     def forward(self, x):
         # Ensure 4D input
-        if x.dim() == 2: x = x.view(-1, 1, 28, 56)
+        if x.dim() == 2: x = x.view(-1, 3, 28, 56)
             
         log_det_total = torch.zeros(x.size(0), device=x.device)
             
