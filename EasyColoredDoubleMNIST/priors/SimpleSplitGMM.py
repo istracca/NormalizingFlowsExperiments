@@ -3,24 +3,21 @@ import torch.nn as nn
 import numpy as np
 
 class SimpleSplitGMM(nn.Module):
-    def __init__(self, total_dim, arr_num_classes, num_attr, device, scale, fixed_means=True):
+    def __init__(self, total_dim, arr_num_classes, device, scale, fixed_means=True):
         super().__init__()
 
-        # Ensure the total dimension is divisible by the number of attributes
-        assert total_dim % num_attr == 0, "total_dim must be divisible by num_attr"
-
-        dims_per_attr = total_dim // num_attr
-        self.num_attr = num_attr
+        self.num_attr = len(arr_num_classes)
+        dims_per_attr = total_dim // self.num_attr
         self.dims_per_attr = dims_per_attr
         self.means = []
 
         if fixed_means:
-            for i in range(num_attr):
+            for i in range(self.num_attr):
                 mean = torch.randn(arr_num_classes[i], dims_per_attr, device=device) * scale
                 self.means.append(mean)
             
         else:
-            for i in range(num_attr):
+            for i in range(self.num_attr):
                 mean = nn.Parameter(torch.randn(arr_num_classes[i], dims_per_attr, device=device) * scale)
                 mean.requires_grad = True
                 self.means.append(mean)
