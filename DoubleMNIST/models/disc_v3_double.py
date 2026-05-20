@@ -18,7 +18,7 @@ class ConvResidualBlock(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
             
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1), # 1x1 mixing
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
@@ -35,7 +35,6 @@ class ConvResidualBlock(nn.Module):
 class LinearResidualBlock(nn.Module):
     """
     Discriminative equivalent of SimpleFlow (Linear) layer.
-    Structure matches your SimpleFlow: Linear -> Linear -> Linear.
     """
     def __init__(self, dim, hidden_dim=2048, dropout_p=0.0):
         super().__init__()
@@ -57,7 +56,7 @@ class LinearResidualBlock(nn.Module):
         return x + self.net(x)
 
 class PseudoResNet(nn.Module):
-    def __init__(self, num_classes=20, dropout_p=0.0): # num_classes=20 for 2 digits (10+10)
+    def __init__(self, num_classes=20, dropout_p=0.0):
         super().__init__()
         
         # --- SCALE 1 ---

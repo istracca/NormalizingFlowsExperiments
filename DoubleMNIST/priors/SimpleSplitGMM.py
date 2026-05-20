@@ -6,9 +6,6 @@ class SimpleSplitGMM(nn.Module):
     def __init__(self, total_dim, num_classes, num_attr, device, scale, fixed_means=True):
         super().__init__()
 
-        # Ensure the total dimension is divisible by the number of attributes
-        assert total_dim % num_attr == 0, "total_dim must be divisible by num_attr"
-
         dims_per_attr = total_dim // num_attr
         self.num_attr = num_attr
         self.dims_per_attr = dims_per_attr
@@ -46,12 +43,10 @@ class SimpleSplitGMM(nn.Module):
         complete_logits = []
         
         for i in range(self.num_attr):
-            # Calculating distance to means
             d = -((chunks[i].unsqueeze(1) - self.means[i].unsqueeze(0))**2).sum(2)
             preds.append(d.argmax(1))
             complete_logits.append(d)
         
-        # Stack along dimension 1 to get shape (batch_size, num_attr)
         preds = torch.stack(preds, dim=1) 
         return preds, complete_logits
     

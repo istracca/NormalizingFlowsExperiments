@@ -1,0 +1,2 @@
+MODEL,PRIOR,OPTIMIZER,TRANSFORM,DROPOUT,TYPE,val_acc_mean,val_acc_ci,val_loss_mean,val_loss_ci,test_acc_mean,test_acc_ci,test_loss_mean,test_loss_ci
+hybrid_v3_1x1,GaussianPrior,Adam,0.500000,0.100000,best_loss,0.762961,0.009442,-2373.673258,15.537511,0.778339,0.008134,-2362.428504,15.980022

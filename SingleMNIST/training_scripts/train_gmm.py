@@ -8,20 +8,20 @@ import argparse
 import importlib
 import csv
 import os
-from torchvision import transforms
 import kornia.augmentation as K
 import sys
 sys.path.append('../..')
 from utils import set_seed
 from save_samples import save_samples
 sys.path.append('../priors')
-from GaussianMixturePrior import GaussianMixturePrior
+from GMM import GMM
 sys.path.append('../models')
 
 set_seed(42)
 parser = argparse.ArgumentParser(description='Train a flow-based model on MNIST.')
 parser.add_argument('--scale', type=float, default=1.0, help='Scale parameter for the prior')
-parser.add_argument('--model', type=str, default='glow', help='Model name')
+parser.add_argument('--model', type=str, default='hybrid_v3_1x1', help='Model name')
+parser.add_argument('--prior', type=str, default='GMM', help='Prior type')
 parser.add_argument('--optimizer', type=str, default='Adam', choices=['Adam', 'SGD'], help='Optimizer to use')
 parser.add_argument('--transform', type=float, default=0.0, help='Percentage of data transformation to apply')
 parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability for the model')
@@ -29,6 +29,7 @@ args = parser.parse_args()
 
 SCALE = args.scale
 MODEL = args.model
+PRIOR = args.prior
 OPTIMIZER = args.optimizer
 TRANSFORM = args.transform
 DROPOUT = args.dropout
@@ -36,7 +37,6 @@ DROPOUT = args.dropout
 module = importlib.import_module(MODEL)
 GeneralFlow = getattr(module, 'GeneralFlow')
 
-# Recover datasets from files
 data = np.load('../data/mnist_data.npz')
 X_train, y_train = data['X_train'], data['y_train']
 X_val, y_val = data['X_val'], data['y_val']
@@ -62,9 +62,8 @@ val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 set_seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GeneralFlow(dropout_p=DROPOUT).to(device)
-prior = GaussianMixturePrior(total_dim=784, num_classes=10, device=device, scale=SCALE, fixed_means=True)
+prior = GMM(total_dim=784, num_classes=10, device=device, scale=SCALE, fixed_means=True)
 
-# gpu_transform = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)).to(device)
 gpu_transform = K.RandomAffine(degrees=10, translate=(0.1, 0.1), p=1.0).to(device)
 
 if OPTIMIZER == 'Adam':
@@ -82,17 +81,15 @@ patience_val_loss = 10
 threshold_val_loss = 1e5
 threshold_scheduler = 0.5
 
-# Set up logging to file
 logging.basicConfig(
-    filename=f'../experiments/logs/GMM/GMM_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.log',
+    filename=f'../experiments/logs/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.log',
     filemode='w',
     format='%(asctime)s %(levelname)s: %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger()
 
-csv_path = f'../experiments/csv/GMM/GMM_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.csv'
-# clear existing file or create new one
+csv_path = f'../experiments/csv/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.csv'
 if os.path.exists(csv_path):
     os.remove(csv_path)
 
@@ -101,7 +98,7 @@ if not os.path.exists(csv_path):
     with open(csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
-save_dir = f'../experiments/samples/GMM/GMM_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}'
+save_dir = f'../experiments/samples/GMM/GMM_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}'
 os.makedirs(save_dir, exist_ok=True)
 
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, patience=patience, threshold=threshold_scheduler, threshold_mode='abs', verbose=True)
@@ -124,7 +121,6 @@ for epoch in range(num_epochs):
             if n_transform > 0:
                 idx = torch.randperm(n, device=batch_X.device)[:n_transform]
                 batch_X[idx] = gpu_transform(batch_X[idx])
-        # dequantization
         batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
         batch_X = batch_X - 0.5
 
@@ -160,7 +156,6 @@ for epoch in range(num_epochs):
         for batch_X, batch_y in val_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
-            # dequantization
             batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
             batch_X = batch_X - 0.5
 
@@ -179,14 +174,12 @@ for epoch in range(num_epochs):
 
     scheduler.step(train_loss)
 
-    # Check if the learning rate was reduced
     current_lr = optimizer.param_groups[0]['lr']
     if current_lr < previous_lr:
         reduction_count += 1
         previous_lr = current_lr
         logger.info(f"Reduction {reduction_count}/{max_reductions}: LR dropped to {current_lr}")
 
-    # Break the loop if threshold is met
     if reduction_count >= max_reductions:
         logger.info(f"Breaking loop: Learning rate reduced more than {max_reductions} times.")
         break
@@ -199,7 +192,7 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/GMM/best_loss_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+        }, f'../experiments/models/GMM/best_loss_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
 
     if val_loss > threshold_val_loss:
         epochs_with_enormous_loss += 1
@@ -217,7 +210,7 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/GMM/best_acc_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+        }, f'../experiments/models/GMM/best_acc_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
 
     logger.info(
         f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, '
@@ -245,4 +238,4 @@ torch.save({
     'prior_state_dict': prior.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'means': prior.means
-}, f'../experiments/models/GMM/final_{SCALE}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')
+}, f'../experiments/models/GMM/final_{SCALE}_{MODEL}_{PRIOR}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.pth')

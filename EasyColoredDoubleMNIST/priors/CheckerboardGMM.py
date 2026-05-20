@@ -23,17 +23,12 @@ class CheckerboardGMM(nn.Module):
                 self.means.append(mean)
 
     def get_loss(self, z, sldj, labels):
-        y = labels # Shape: (batch, num_attr)
+        y = labels
         z_flat = z.view(z.shape[0], -1)
         
         nll = 0
         for i in range(self.num_attr):
-            # Checkerboard indexing: start at i, take every num_attr-th element
-            # This yields a shape of (batch, dims_per_attr)
-            z_subset = z_flat[:, i::self.num_attr] 
-            
-            # Select the correct mean for each sample in the batch based on label
-            # self.means[i][y[:, i]] results in (batch, dims_per_attr)
+            z_subset = z_flat[:, i::self.num_attr]
             diff = z_subset - self.means[i][y[:, i]]
             
             nll += 0.5 * (diff ** 2).sum(dim=1) + 0.5 * self.dims_per_attr * np.log(2 * np.pi)
@@ -47,17 +42,11 @@ class CheckerboardGMM(nn.Module):
         complete_logits = []
         
         for i in range(self.num_attr):
-            # Extract the i-th checkerboard component
-            z_subset = z_flat[:, i::self.num_attr] # (batch, dims_per_attr)
-            
-            # Distance calculation: (batch, 1, dims) - (1, num_classes, dims)
-            # Result: (batch, num_classes)
+            z_subset = z_flat[:, i::self.num_attr]
             sq_dist = -((z_subset.unsqueeze(1) - self.means[i].unsqueeze(0))**2).sum(2)
-            
             preds.append(sq_dist.argmax(1))
             complete_logits.append(sq_dist)
         
-        # Stack along dimension 1 to get shape (batch_size, num_attr)
         preds = torch.stack(preds, dim=1) 
         return preds, complete_logits
     

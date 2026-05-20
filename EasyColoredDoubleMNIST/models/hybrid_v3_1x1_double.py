@@ -8,7 +8,6 @@ class Invertible1x1Conv(nn.Module):
         self.channels = channels
         
         # Initialize with a random orthogonal matrix
-        # This keeps the training stable at the start
         w_init = torch.linalg.qr(torch.randn(channels, channels))[0]
         
         # Make it a parameter so we can learn it
@@ -78,7 +77,7 @@ class ChannelCouplingLayer(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1), # 1x1 conv mixing
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
@@ -121,7 +120,6 @@ class SimpleFlow(nn.Module):
         self.input_dim = input_dim
         
         # We alternate masking: Evens vs Odds
-        # This is a "Checkerboard-like" split for flattened vectors
         mask_even = torch.zeros(input_dim)
         mask_even[0::2] = 1 # [1, 0, 1, 0...]
         
@@ -152,7 +150,6 @@ class SimpleFlow(nn.Module):
             out = layer(masked_z)
             s, t = out.chunk(2, dim=1)
             
-            # Tanh clamping is crucial for stability in high dim
             s = torch.tanh(s) * (1 - mask)
             t = t * (1 - mask)
             
@@ -250,9 +247,6 @@ class GeneralFlow(nn.Module):
         z = z.view(-1, 48, 7, 14)
         
         # --- REVERSE SCALE 2 ---
-        # Note: We must iterate in reverse and apply operations in reverse order
-        # Forward: Inv1x1 -> Coupling
-        # Inverse: Coupling_Inv -> Inv1x1_Inv
         
         for inv1x1, coupling in zip(reversed(self.flow2_inv1x1), reversed(self.flow2_couplings)):
             z = coupling.inverse(z)

@@ -25,16 +25,13 @@ class SimpleSplitGMM(nn.Module):
     def get_loss(self, z, sldj, labels):
         y = labels
         z_flat = z.view(z.shape[0], -1)
-        # Compute negative log-likelihood for each part using the correct class mean
         nll = 0
         for i in range(self.num_attr):
             start = i * self.dims_per_attr
             end = (i + 1) * self.dims_per_attr
             nll += 0.5 * ((z_flat[:, start:end] - self.means[i][y[:, i]]) ** 2).sum(dim=1) + 0.5 * self.dims_per_attr * np.log(2 * np.pi)
-        
-        # Add change of variable term (sldj)
+    
         loss = (nll - sldj).mean()
-
         return loss
 
     def classify(self, z_flat):
@@ -42,12 +39,10 @@ class SimpleSplitGMM(nn.Module):
         preds = []
         complete_logits = []
         for i in range(self.num_attr):
-            # Calculating distance to means
             d = -((chunks[i].unsqueeze(1) - self.means[i].unsqueeze(0))**2).sum(2)
             preds.append(d.argmax(1))
             complete_logits.append(d)
         
-        # Stack along dimension 1 to get shape (batch_size, num_attr)
         preds = torch.stack(preds, dim=1) 
         return preds, complete_logits
     

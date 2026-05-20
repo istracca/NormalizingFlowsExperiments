@@ -46,12 +46,10 @@ class SimpleSplitIB(nn.Module):
         preds = []
         complete_logits = []
         for i in range(self.num_attr):
-            # Calculating distance to means
             d = -((chunks[i].unsqueeze(1) - self.means[i].unsqueeze(0))**2).sum(2)
             preds.append(d.argmax(1))
             complete_logits.append(d)
 
-        # Stack along dimension 1 to get shape (batch_size, num_attr)
         preds = torch.stack(preds, dim=1)
         return preds, complete_logits
     

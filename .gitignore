@@ -2,9 +2,9 @@ __pycache__/
 *.pt
 *.pth
 *.log
-SingleMNIST/**/*.png
-DoubleMNIST/**/*.png
-CBM/**/*.png
-EasyColoredDoubleMNIST/**/*.png
-**/experiments/**/*.csv
+**/experiments/
+**/experiments/**
+**/experiments_seed/
+**/experiments_seed/**
 *.npz
+**/experiments_seed/**/*.csv

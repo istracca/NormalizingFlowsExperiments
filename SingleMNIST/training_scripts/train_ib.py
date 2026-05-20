@@ -1,5 +1,4 @@
 import numpy as np
-from utils import set_seed
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
@@ -9,25 +8,25 @@ import argparse
 import importlib
 import csv
 import os
-from torchvision import transforms
 import kornia.augmentation as K
 import sys
 sys.path.append('../..')
 from utils import set_seed
 from save_samples import save_samples
 sys.path.append('../priors')
-from IB_FactorizedPrior import IB_FactorizedPrior
+from IB import IB
 sys.path.append('../models')
 
 set_seed(42)
 parser = argparse.ArgumentParser(description='Train a flow-based model on MNIST.')
-parser.add_argument('--scale', type=float, default=1, help='Scale parameter for the prior')
+parser.add_argument('--scale', type=float, default=0.0, help='Scale parameter for the prior')
 parser.add_argument('--beta', type=float, default=1.0, help='Beta parameter for the IB prior')
-parser.add_argument('--model', type=str, default='glow', help='Model name')
+parser.add_argument('--model', type=str, default='hybrid_v3_1x1', help='Model name')
 parser.add_argument('--optimizer', type=str, default='Adam', choices=['Adam', 'SGD'], help='Optimizer to use')
-parser.add_argument('--transform', type=float, default=0.0, help='Percentage of data transformation to apply')
-parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability for the model')
+parser.add_argument('--transform', type=float, default=0.5, help='Percentage of data transformation to apply')
+parser.add_argument('--dropout', type=float, default=0.1, help='Dropout probability for the model')
 parser.add_argument('--fixed_means', type=str, default=False, help='Whether to use fixed means in the prior')
+parser.add_argument('--epochs_warmup', type=int, default=20, help='Number of epochs to warm up the model with only generative loss')
 args = parser.parse_args()
 
 SCALE = args.scale
@@ -36,6 +35,8 @@ OPTIMIZER = args.optimizer
 BETA = args.beta
 TRANSFORM = args.transform
 DROPOUT = args.dropout
+EPOCHS_WARMUP = args.epochs_warmup
+
 if args.fixed_means in ['True', 'true', '1']:
     FIXED_MEANS = True
 else:
@@ -44,7 +45,6 @@ else:
 module = importlib.import_module(MODEL)
 GeneralFlow = getattr(module, 'GeneralFlow')
 
-# Recover datasets from files
 data = np.load('../data/mnist_data.npz')
 X_train, y_train = data['X_train'], data['y_train']
 X_val, y_val = data['X_val'], data['y_val']
@@ -70,15 +70,14 @@ val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 set_seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GeneralFlow().to(device)
-prior = IB_FactorizedPrior(total_dim=784, num_classes=10, device=device, scale=SCALE, fixed_means=FIXED_MEANS)
+prior = IB(total_dim=784, num_classes=10, beta=BETA, device=device, scale=SCALE, fixed_means=FIXED_MEANS)
 
-# gpu_transform = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)).to(device)
 gpu_transform = K.RandomAffine(degrees=10, translate=(0.1, 0.1), p=1.0).to(device)
 
 if OPTIMIZER == 'Adam':
-    optimizer = optim.Adam(list(model.parameters()) + list(prior.parameters()), lr=1e-3)
+    optimizer = optim.Adam(list(model.parameters()) + list(prior.parameters()), lr=1e-4)
 elif OPTIMIZER == 'SGD':
-    optimizer = optim.SGD(list(model.parameters()) + list(prior.parameters()), lr=1e-3, momentum=0.9, weight_decay=1e-5)
+    optimizer = optim.SGD(list(model.parameters()) + list(prior.parameters()), lr=1e-4, momentum=0.9, weight_decay=1e-5)
 
 print(list(prior.parameters()))
 
@@ -89,22 +88,21 @@ factor = 0.5
 patience_val_loss = 10
 threshold_val_loss = 1e5
 
-# Set up logging to file
 logging.basicConfig(
-    filename=f'../experiments/logs/ib/ib_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.log',
+    filename=f'../experiments/logs/IB/IB_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}.log',
     filemode='w',
     format='%(asctime)s %(levelname)s: %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger()
 
-csv_path = f'../experiments/csv/ib/ib_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.csv'
+csv_path = f'../experiments/csv/IB/IB_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}.csv'
 headers = ['epoch', 'train_loss', 'train_gen_loss', 'train_cls_loss', 'val_loss', 'val_gen_loss', 'val_cls_loss', 'train_acc', 'val_acc', 'lr']
 if not os.path.exists(csv_path):
     with open(csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
-save_dir = f'../experiments/samples/ib/ib_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}'
+save_dir = f'../experiments/samples/IB/IB_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}'
 os.makedirs(save_dir, exist_ok=True)
 
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, patience=patience, verbose=True)
@@ -130,7 +128,6 @@ for epoch in range(num_epochs):
                 idx = torch.randperm(n, device=batch_X.device)[:n_transform]
                 batch_X[idx] = gpu_transform(batch_X[idx])
 
-        # dequantization
         batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
         batch_X = batch_X - 0.5
 
@@ -139,7 +136,12 @@ for epoch in range(num_epochs):
             batch_X = batch_X.view(-1, 1, 28, 28)
 
         z, sldj = model(batch_X)
-        loss, gen_loss, cls_loss = prior.get_loss(z, sldj, batch_y, beta=BETA)
+
+        if epoch < EPOCHS_WARMUP:
+            loss = gen_loss = prior.get_loss(z, sldj, batch_y)[1]                                          
+            cls_loss = torch.tensor(0.0, device=device)                                                 
+        else:
+            loss, gen_loss, cls_loss = prior.get_loss(z, sldj, batch_y)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
@@ -150,7 +152,6 @@ for epoch in range(num_epochs):
         train_gen_loss += gen_loss.item()
         train_cls_loss += cls_loss.item()
 
-        # Compute train accuracy
         z_flat = z.view(z.size(0), -1)
         preds = prior.classify(z_flat)
         if isinstance(preds, tuple):
@@ -172,17 +173,15 @@ for epoch in range(num_epochs):
         for batch_X, batch_y in val_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
-            # dequantization
             batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
             batch_X = batch_X - 0.5
 
             z, sldj = model(batch_X)
-            loss, gen_loss, cls_loss = prior.get_loss(z, sldj, batch_y, beta=BETA)
+            loss, gen_loss, cls_loss = prior.get_loss(z, sldj, batch_y)
             val_loss += loss.item()
             val_gen_loss += gen_loss.item()
             val_cls_loss += cls_loss.item()
 
-            # Compute val accuracy
             z_flat = z.view(z.size(0), -1)
             preds = prior.classify(z_flat)
             if isinstance(preds, tuple):
@@ -194,16 +193,15 @@ for epoch in range(num_epochs):
     val_cls_loss /= len(val_loader)
     val_acc = val_correct / val_total
 
-    scheduler.step(train_loss)
+    if epoch >= EPOCHS_WARMUP:
+        scheduler.step(train_loss)
 
-    # Check if the learning rate was reduced
     current_lr = optimizer.param_groups[0]['lr']
     if current_lr < previous_lr:
         reduction_count += 1
         previous_lr = current_lr
         logger.info(f"Reduction {reduction_count}/{max_reductions}: LR dropped to {current_lr}")
 
-    # Break the loop if threshold is met
     if reduction_count >= max_reductions:
         logger.info(f"Breaking loop: Learning rate reduced more than {max_reductions} times.")
         break
@@ -216,7 +214,7 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/ib/best_loss_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')
+        }, f'../experiments/models/IB/best_loss_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}.pth')
 
     if val_loss > threshold_val_loss:
         epochs_with_enormous_loss += 1
@@ -234,7 +232,7 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'means': prior.means,
             'epoch': epoch + 1
-        }, f'../experiments/models/ib/best_acc_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')
+        }, f'../experiments/models/IB/best_acc_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}.pth')
 
     logger.info(
         f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Gen Loss: {train_gen_loss:.4f}, Train Cls Loss: {train_cls_loss:.4f}, Val Loss: {val_loss:.4f}, Val Gen Loss: {val_gen_loss:.4f}, Val Cls Loss: {val_cls_loss:.4f}, '
@@ -266,4 +264,4 @@ torch.save({
     'prior_state_dict': prior.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'means': prior.means
-}, f'../experiments/models/ib/final_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}.pth')
+}, f'../experiments/models/IB/final_{SCALE}_{BETA}_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}_{FIXED_MEANS}_{EPOCHS_WARMUP}.pth')

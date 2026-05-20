@@ -1,0 +1,11 @@
+temperature,seed,consistency_ratio,ci_margin
+0.0,original,1.0,
+0.0,aggregate,1.0,0.0
+0.2,original,0.9494500368833542,
+0.2,aggregate,0.9494500368833542,0.0
+0.4,original,0.7929100388288498,
+0.4,aggregate,0.7929100388288498,0.0
+0.6,original,0.5432500243186951,
+0.6,aggregate,0.5432500243186951,0.0
+0.8,original,0.33811001673340796,
+0.8,aggregate,0.33811001673340796,0.0

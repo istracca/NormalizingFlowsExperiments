@@ -6,19 +6,18 @@ import os
 import torch
 from multiprocessing import Process
 
-# --- Configuration ---
-SCALES = [1, 3, 5]
-BETAS = [0.25, 0.5, 1.0, 2.0, 4.0]
-MODELS = ['hybrid', 'hybrid_v2']
+SCALES = [0.0]
+BETAS = [0.01,0.05,0.1,0.5,1.0]
+MODELS = ['hybrid_v3_1x1']
 OPTIMIZERS = ['Adam']
-TRANSFORMS = [0.0, 0.5, 1.0]
-DROPOUT_P = [0.0, 0.2]
-FIXED_MEANS = [True, False]
+TRANSFORMS = [0.5]
+DROPOUT_P = [0.1]
+FIXED_MEANS = [False]
+EPOCHS_WARMUP = [20]
 
-JOBS_PER_GPU = 4
+JOBS_PER_GPU = 2
 
-# Generate all combinations
-combinations = list(itertools.product(SCALES, BETAS, MODELS, OPTIMIZERS, TRANSFORMS, DROPOUT_P, FIXED_MEANS))
+combinations = list(itertools.product(SCALES, BETAS, MODELS, OPTIMIZERS, TRANSFORMS, DROPOUT_P, FIXED_MEANS, EPOCHS_WARMUP))
 total_runs = len(combinations)
 
 def run_worker(worker_id, gpu_id, experiments):
@@ -26,9 +25,9 @@ def run_worker(worker_id, gpu_id, experiments):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
-    for i, (scale, beta, model, opt, trans, dropout, fixed_means) in enumerate(experiments):
+    for i, (scale, beta, model, opt, trans, dropout, fixed_means, epochs_warmup) in enumerate(experiments):
         print(f"\n[GPU {gpu_id} - Experiment {i+1}/{len(experiments)}]")
-        print(f"Params: Scale={scale}, Beta={beta}, Model={model}, Opt={opt}, Transform={trans}, Dropout={dropout}, Fixed Means={fixed_means}")
+        print(f"Params: Scale={scale}, Beta={beta}, Model={model}, Opt={opt}, Transform={trans}, Dropout={dropout}, Fixed Means={fixed_means}, Epochs Warmup={epochs_warmup}")
 
         cmd = [
             sys.executable, "train_ib.py",
@@ -38,7 +37,8 @@ def run_worker(worker_id, gpu_id, experiments):
             "--optimizer", opt,
             "--transform", str(trans),
             "--dropout", str(dropout),
-            "--fixed_means", str(fixed_means)
+            "--fixed_means", str(fixed_means),
+            "--epochs_warmup", str(epochs_warmup)
         ]
 
         try:
@@ -50,6 +50,7 @@ def run_worker(worker_id, gpu_id, experiments):
             break
 
         print(f"Worker {worker_id} finished experiment on GPU {gpu_id}.")
+
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():

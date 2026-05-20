@@ -31,7 +31,6 @@ DROPOUT = args.dropout
 module = importlib.import_module(MODEL)
 PseudoResNet = getattr(module, 'PseudoResNet')
 
-# Recover datasets from files
 data = np.load('../data/mnist_data.npz')
 X_train, y_train = data['X_train'], data['y_train']
 X_val, y_val = data['X_val'], data['y_val']
@@ -59,7 +58,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = PseudoResNet(num_classes = 10, dropout_p=DROPOUT).to(device)
 criterion = torch.nn.CrossEntropyLoss()
 
-# gpu_transform = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)).to(device)
 gpu_transform = K.RandomAffine(degrees=10, translate=(0.1, 0.1), p=1.0).to(device)
 
 if OPTIMIZER == 'Adam':
@@ -82,7 +80,6 @@ csv_dir = '../experiments/csv/Disc'
 for d in [model_dir, log_dir, csv_dir]:
     os.makedirs(d, exist_ok=True)
 
-# Set up logging to file
 logging.basicConfig(
     filename=f'{log_dir}/Disc_{MODEL}_{OPTIMIZER}_{TRANSFORM}_{DROPOUT}.log',
     filemode='w',
@@ -119,7 +116,6 @@ for epoch in range(num_epochs):
             if n_transform > 0:
                 idx = torch.randperm(n, device=batch_X.device)[:n_transform]
                 batch_X[idx] = gpu_transform(batch_X[idx])
-        # dequantization
         batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
         batch_X = batch_X - 0.5
 
@@ -151,7 +147,6 @@ for epoch in range(num_epochs):
         for batch_X, batch_y in val_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
-            # dequantization
             batch_X = (batch_X * 255. + torch.rand_like(batch_X)) / 256.
             batch_X = batch_X - 0.5
 
@@ -168,14 +163,12 @@ for epoch in range(num_epochs):
 
     scheduler.step(train_loss)
 
-    # Check if the learning rate was reduced
     current_lr = optimizer.param_groups[0]['lr']
     if current_lr < previous_lr:
         reduction_count += 1
         previous_lr = current_lr
         logger.info(f"Reduction {reduction_count}/{max_reductions}: LR dropped to {current_lr}")
 
-    # Break the loop if threshold is met
     if reduction_count >= max_reductions:
         logger.info(f"Breaking loop: Learning rate reduced more than {max_reductions} times.")
         break

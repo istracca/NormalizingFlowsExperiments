@@ -6,7 +6,6 @@ import os
 import torch
 from multiprocessing import Process
 
-# --- Configuration ---
 MODELS = ['disc_v3_double']
 OPTIMIZERS = ['Adam']
 TRANSFORMS = [0.0, 0.25, 0.5]
@@ -14,7 +13,6 @@ DROPOUT_P = [0.0, 0.1, 0.2]
 
 JOBS_PER_GPU = 3
 
-# Generate all combinations
 combinations = list(itertools.product(MODELS, OPTIMIZERS, TRANSFORMS, DROPOUT_P))
 total_runs = len(combinations)
 
@@ -44,6 +42,7 @@ def run_worker(worker_id, gpu_id, experiments):
             break
 
         print(f"Worker {worker_id} finished experiment on GPU {gpu_id}.")
+
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():

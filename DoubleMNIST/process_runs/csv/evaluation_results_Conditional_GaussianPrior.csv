@@ -1,0 +1,2 @@
+MODEL,PRIOR,COND_DIM,OPTIMIZER,TRANSFORM,DROPOUT,TYPE,val_acc_mean,val_acc_ci,val_loss_mean,val_loss_ci,test_acc_mean,test_acc_ci,test_loss_mean,test_loss_ci,val_acc_L_Digit_mean,val_acc_L_Digit_ci,test_acc_L_Digit_mean,test_acc_L_Digit_ci,val_acc_R_Digit_mean,val_acc_R_Digit_ci,test_acc_R_Digit_mean,test_acc_R_Digit_ci
+conditional_scale,GaussianPrior,64,Adam,0.500000,0.100000,best_loss,0.931589,0.015538,-4468.481906,99.433299,0.930855,0.018132,-4443.258662,100.908747,0.963516,0.010176,0.963416,0.009782,0.966349,0.007076,0.965494,0.009348

@@ -8,7 +8,6 @@ class Invertible1x1Conv(nn.Module):
         self.channels = channels
         
         # Initialize with a random orthogonal matrix
-        # This keeps the training stable at the start
         w_init = torch.linalg.qr(torch.randn(channels, channels))[0]
         
         # Make it a parameter so we can learn it
@@ -118,7 +117,6 @@ class SimpleFlow(nn.Module):
         self.masks = []
         
         # We alternate masking: Evens vs Odds
-        # This is a "Checkerboard-like" split for flattened vectors
         mask_even = torch.zeros(input_dim)
         mask_even[0::2] = 1 # [1, 0, 1, 0...]
         

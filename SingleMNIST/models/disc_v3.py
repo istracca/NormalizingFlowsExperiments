@@ -18,7 +18,7 @@ class ConvResidualBlock(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
             
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1), # 1x1 mixing
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),

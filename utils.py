@@ -29,7 +29,6 @@ def set_seed(seed=42):
 
 
 from torch.utils.data import Dataset
-import torchvision.transforms as transforms
 
 class TransformedTensorDataset(Dataset):
     def __init__(self, x_tensor, y_tensor, transform=None):

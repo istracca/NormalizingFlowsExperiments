@@ -1,0 +1,2 @@
+MODEL,OPTIMIZER,TRANSFORM,DROPOUT,TYPE,val_acc_mean,val_acc_ci,test_acc_mean,test_acc_ci,val_acc_L_Digit_mean,val_acc_L_Digit_ci,test_acc_L_Digit_mean,test_acc_L_Digit_ci,val_acc_R_Digit_mean,val_acc_R_Digit_ci,test_acc_R_Digit_mean,test_acc_R_Digit_ci
+disc_v3_double,Adam,0.500000,0.100000,best_loss,0.987340,0.001037,0.988560,0.001173,0.993680,0.000442,0.994420,0.000629,0.993580,0.000731,0.994100,0.000735

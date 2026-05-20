@@ -8,11 +8,7 @@ class Invertible1x1Conv(nn.Module):
         self.channels = channels
         
         # Initialize with a random orthogonal matrix
-        # This keeps the training stable at the start
         w_init = torch.linalg.qr(torch.randn(channels, channels))[0]
-        
-        # Make it a parameter so we can learn it
-        # Shape: (C, C, 1, 1) for Conv2d
         self.weight = nn.Parameter(w_init.unsqueeze(2).unsqueeze(3))
 
     def forward(self, x):
@@ -77,7 +73,7 @@ class ChannelCouplingLayer(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1), # 1x1 conv mixing
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_p),
@@ -120,7 +116,6 @@ class SimpleFlow(nn.Module):
         self.input_dim = input_dim
         
         # We alternate masking: Evens vs Odds
-        # This is a "Checkerboard-like" split for flattened vectors
         mask_even = torch.zeros(input_dim)
         mask_even[0::2] = 1 # [1, 0, 1, 0...]
         
